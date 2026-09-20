@@ -94,7 +94,8 @@ async def detect_litter(
         results = model(
             str(image_path),
             conf=0.40,
-            imgsz=640
+            imgsz=416,
+            verbose=False
         )
 
 
@@ -203,12 +204,18 @@ async def detect_litter_video(
     file: UploadFile = File(...)
 ):
 
+    video_path = None
+    video = None
+
     try:
+
+        # ----------------------------------------------------
+        # Save uploaded video temporarily
+        # ----------------------------------------------------
+
         extension = Path(file.filename).suffix or ".mp4"
 
-        video_filename = (
-            f"{uuid.uuid4()}{extension}"
-        )
+        video_filename = f"{uuid.uuid4()}{extension}"
 
         video_path = VIDEO_DIR / video_filename
 
@@ -218,11 +225,17 @@ async def detect_litter_video(
                 buffer
             )
 
+
+        # ----------------------------------------------------
+        # Open video
+        # ----------------------------------------------------
+
         video = cv2.VideoCapture(
             str(video_path)
         )
 
         if not video.isOpened():
+
             return JSONResponse(
                 status_code=400,
                 content={
@@ -231,146 +244,296 @@ async def detect_litter_video(
                 }
             )
 
+
+        # ----------------------------------------------------
+        # Get video information
+        # ----------------------------------------------------
+
         fps = video.get(
             cv2.CAP_PROP_FPS
         ) or 25
 
-        frame_interval = max(int(fps * 2), 1)
-        baseline_seconds = 2
-        baseline_clear = True
-        event_detected = False
+        total_frames = int(
+            video.get(
+                cv2.CAP_PROP_FRAME_COUNT
+            )
+        )
 
-        frame_number = 0
+        duration = (
+            total_frames / fps
+            if total_frames > 0
+            else 0
+        )
+
+
+        # ----------------------------------------------------
+        # Sample only a limited number of frames
+        #
+        # This is much faster than running YOLO every second
+        # for the entire video.
+        # ----------------------------------------------------
+
+        max_samples = 12
+
+        if total_frames > 0:
+
+            sample_count = min(
+                max_samples,
+                total_frames
+            )
+
+            frame_indices = []
+
+            for i in range(sample_count):
+
+                if sample_count == 1:
+                    index = 0
+                else:
+                    index = int(
+                        i * (total_frames - 1)
+                        / (sample_count - 1)
+                    )
+
+                frame_indices.append(index)
+
+        else:
+
+            frame_indices = list(
+                range(
+                    0,
+                    max_samples * int(fps * 2),
+                    int(fps * 2)
+                )
+            )
+
+
+        # ----------------------------------------------------
+        # Detection variables
+        # ----------------------------------------------------
+
         best_confidence = 0
+
         best_detections = []
+
         detected_at_seconds = None
+
         evidence_image_base64 = None
 
-        while True:
+
+        # ----------------------------------------------------
+        # Analyze sampled frames
+        # ----------------------------------------------------
+
+        for frame_index in frame_indices:
+
+            video.set(
+                cv2.CAP_PROP_POS_FRAMES,
+                frame_index
+            )
+
             success, frame = video.read()
 
             if not success:
-                break
+                continue
 
-            if frame_number % frame_interval == 0:
-                results = model(
-                    frame,
-                    conf=0.40,
-                    imgsz=416
-                )
 
-                result = results[0]
-                detections = []
+            # ------------------------------------------------
+            # Run YOLO
+            # Lower image size + confidence for faster
+            # deployment on CPU.
+            # ------------------------------------------------
 
-                if result.boxes is not None:
-                    for box in result.boxes:
-                        confidence = float(
-                            box.conf[0]
-                        )
+            results = model(
+                frame,
+                conf=0.25,
+                imgsz=416,
+                verbose=False
+            )
 
-                        class_id = int(
-                            box.cls[0]
-                        )
+            result = results[0]
 
-                        detections.append({
-                            "class": result.names[class_id],
-                            "confidence": round(
+            detections = []
+
+
+            # ------------------------------------------------
+            # Extract detections
+            # ------------------------------------------------
+
+            if result.boxes is not None:
+
+                for box in result.boxes:
+
+                    confidence = float(
+                        box.conf[0]
+                    )
+
+                    class_id = int(
+                        box.cls[0]
+                    )
+
+                    detections.append({
+
+                        "class":
+                            result.names[class_id],
+
+                        "confidence":
+                            round(
                                 confidence,
                                 3
                             )
-                        })
 
-                timestamp_seconds = frame_number / fps
+                    })
 
-                if timestamp_seconds <= baseline_seconds:
 
-                    if detections:
-                        baseline_clear = False
+            # ------------------------------------------------
+            # Keep the strongest detection
+            # ------------------------------------------------
 
-                elif baseline_clear and detections:
+            if detections:
 
-                    highest = max(
-                        item["confidence"]
-                        for item in detections
+                highest = max(
+                    item["confidence"]
+                    for item in detections
+                )
+
+                if highest > best_confidence:
+
+                    best_confidence = highest
+
+                    best_detections = detections
+
+                    detected_at_seconds = round(
+                        frame_index / fps,
+                        1
                     )
 
-                    if highest > best_confidence:
-                        event_detected = True
 
-                        best_confidence = highest
-                        best_detections = detections
+                    # ----------------------------------------
+                    # Create evidence image
+                    # ----------------------------------------
 
-                        detected_at_seconds = round(
-                            timestamp_seconds,
-                            1
+                    image_ok, image_buffer = (
+                        cv2.imencode(
+                            ".jpg",
+                            frame
+                        )
+                    )
+
+                    if image_ok:
+
+                        evidence_image_base64 = (
+                            base64.b64encode(
+                                image_buffer
+                            ).decode("utf-8")
                         )
 
-                        image_ok, image_buffer = (
-                            cv2.imencode(
-                                ".jpg",
-                                frame
-                            )
-                        )
 
-                        if image_ok:
-                            evidence_image_base64 = (
-                                base64.b64encode(
-                                    image_buffer
-                                ).decode("utf-8")
-                            )
+        # ----------------------------------------------------
+        # Release video
+        # ----------------------------------------------------
 
-                    if highest > best_confidence:
-                        best_confidence = highest
-                        best_detections = detections
-                        detected_at_seconds = round(
-                            frame_number / fps,
-                            1
-                        )
+        if video is not None:
+            video.release()
 
-                        image_ok, image_buffer = (
-                            cv2.imencode(
-                                ".jpg",
-                                frame
-                            )
-                        )
+            video = None
 
-                        if image_ok:
-                            evidence_image_base64 = (
-                                base64.b64encode(
-                                    image_buffer
-                                ).decode("utf-8")
-                            )
 
-            frame_number += 1
+        # ----------------------------------------------------
+        # Determine result
+        # ----------------------------------------------------
 
-        video.release()
-        try:
-            video_path.unlink()
-        except Exception:
-            pass
+        litter_detected = (
+            len(best_detections) > 0
+        )
+
+
+        # IMPORTANT:
+        # Any litter detected anywhere in the video
+        # is treated as an event.
+        event_detected = litter_detected
+
+
+        print(
+            f"Video analyzed: "
+            f"{duration:.1f}s, "
+            f"{len(frame_indices)} frames sampled, "
+            f"litter={litter_detected}, "
+            f"confidence={best_confidence:.3f}"
+        )
+
 
         return {
+
             "success": True,
-            "eventDetected": event_detected,
+
+            "eventDetected":
+                event_detected,
+
             "litterDetected":
-                len(best_detections) > 0,
-            "count": len(best_detections),
-            "detections": best_detections,
+                litter_detected,
+
+            "count":
+                len(best_detections),
+
+            "detections":
+                best_detections,
+
             "highestConfidence":
                 best_confidence,
+
             "detectedAtSeconds":
                 detected_at_seconds,
+
             "evidenceImageBase64":
                 evidence_image_base64
         }
 
+
     except Exception as e:
+
+        print(
+            "Video detection error:",
+            str(e)
+        )
+
         return JSONResponse(
+
             status_code=500,
+
             content={
+
                 "success": False,
-                "message": str(e)
+
+                "message":
+                    str(e)
             }
         )
 
-print("GreenEye AI API ready.")
+
+    finally:
+
+        # ----------------------------------------------------
+        # Always release OpenCV
+        # ----------------------------------------------------
+
+        if video is not None:
+
+            try:
+                video.release()
+            except Exception:
+                pass
+
+
+        # ----------------------------------------------------
+        # Delete temporary video
+        # ----------------------------------------------------
+
+        if video_path is not None:
+
+            try:
+
+                if video_path.exists():
+                    video_path.unlink()
+
+            except Exception:
+                pass
