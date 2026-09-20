@@ -1,6 +1,7 @@
 import express from 'express';
 import Violation from '../models/Violation.js';
 import multer from 'multer';
+import { v2 as cloudinary } from 'cloudinary';
 import {
   detectLitter,
   detectLitterVideo
@@ -8,6 +9,11 @@ import {
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 const router = express.Router();
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -181,40 +187,34 @@ router.post('/analyze', upload.single('file'), async (req, res) => {
     }
 
     // LINE 4: Find highest-confidence detection
-    const highestConfidence =
-      Math.max(
-        ...result.detections.map(
-          detection => detection.confidence
-        )
-      );
-
-
-    // LINE 5: Create MongoDB violation
+    const cloudinaryResult = await cloudinary.uploader.upload(
+      req.file.path,
+      {
+        folder: 'greeneye/evidence',
+        resource_type: 'image'
+      }
+    );
+    
     const violation = await Violation.create({
-
       violationId: `GV-${Date.now()}`,
-
       studentId: studentId,
-
+    
       type:
         req.body.eventType ===
         'suspected_littering'
           ? 'Suspected Littering Event'
           : 'Littering',
-
+    
       location: 'College Campus',
-
+    
       confidence: highestConfidence,
-
-      evidenceImage:
-        `/uploads/${req.file.filename}`,
-
+    
+      evidenceImage: cloudinaryResult.secure_url,
+    
       status: 'Pending Review',
-
+    
       fineAmount: 100
-
     });
-
 
     // LINE 6: Return AI + violation information
     res.status(201).json({
@@ -358,18 +358,14 @@ router.post(
       const evidenceFilename =
         `video-evidence-${Date.now()}.jpg`;
 
-      const evidencePath = path.join(
-        uploadsDir,
-        evidenceFilename
-      );
-
-      fs.writeFileSync(
-        evidencePath,
-        Buffer.from(
-          result.evidenceImageBase64,
-          'base64'
-        )
-      );
+      const cloudinaryResult =
+        await cloudinary.uploader.upload(
+          `data:image/jpeg;base64,${result.evidenceImageBase64}`,
+          {
+            folder: 'greeneye/evidence',
+            resource_type: 'image'
+          }
+        );
 
       const violation = await Violation.create({
         violationId: `GV-${Date.now()}`,
@@ -379,7 +375,7 @@ router.post(
         confidence:
           result.highestConfidence || 0,
         evidenceImage:
-          `/uploads/${evidenceFilename}`,
+          cloudinaryResult.secure_url,
         status: 'Pending Review',
         fineAmount: 100
       });
