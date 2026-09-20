@@ -1,0 +1,36 @@
+# Node
+node_modules/
+npm-debug.log*
+package-lock.json
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Generated files
+uploads/
+video-uploads/
+temporary-checks/
+debug.log
+
+# AI generated files
+ai-service/uploads/
+ai-service/videos/
+ai-service/evidence/
+ai-service/runs/
+ai-service/datasets/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

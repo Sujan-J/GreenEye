@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>GreenEye | Admin Dashboard</title>
+
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+
+<div class="app">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+
+        <div class="brand">
+            <span class="brand-icon">🌱</span>
+            <span>GreenEye</span>
+        </div>
+
+        <div class="sidebar-label">MAIN MENU</div>
+
+        <nav>
+            <a class="active" href="#dashboard">
+                📊 <span>Dashboard</span>
+            </a>
+
+            <a href="#students">
+                👨‍🎓 <span>Students</span>
+            </a>
+
+            <a href="#violations">
+                🚨 <span>Violations</span>
+            </a>
+
+            <a href="#camera">
+                📹 <span>Live Camera</span>
+            </a>
+
+            <a href="#fines">
+                💰 <span>Fines</span>
+            </a>
+
+            <a href="#reports">
+                📈 <span>Reports</span>
+            </a>
+        </nav>
+
+        <div class="theme-switcher">
+            <button id="themeToggle" type="button">
+                🌙 Dark Mode
+            </button>
+        </div>
+
+        <div class="sidebar-bottom">
+            <div class="system-status">
+                <span class="status-dot"></span>
+                System Online
+            </div>
+        </div>
+
+    </aside>
+
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content">
+
+        <!-- HEADER -->
+        <header class="topbar">
+
+            <div>
+                <h1>Dashboard</h1>
+                <p>Anti-Littering AI Surveillance System</p>
+            </div>
+
+            <div class="admin-profile">
+                <div class="admin-avatar">A</div>
+
+                <div>
+                    <strong>Administrator</strong>
+                    <small>GreenEye Admin</small>
+                </div>
+            </div>
+
+        </header>
+
+
+        <!-- DASHBOARD CARDS -->
+        <section id="dashboard" class="cards">
+
+            <div class="card">
+                <div class="card-icon students-icon">👨‍🎓</div>
+
+                <div>
+                    <small>Registered Students</small>
+                    <strong id="studentCount">0</strong>
+                </div>
+            </div>
+
+
+            <div class="card">
+                <div class="card-icon violation-icon">🚨</div>
+
+                <div>
+                    <small>Total Violations</small>
+                    <strong id="violationCount">0</strong>
+                </div>
+            </div>
+
+
+            <div class="card">
+                <div class="card-icon pending-icon">⏳</div>
+
+                <div>
+                    <small>Pending Review</small>
+                    <strong id="pendingCount">0</strong>
+                </div>
+            </div>
+
+
+            <div class="card">
+                <div class="card-icon fine-icon">₹</div>
+
+                <div>
+                    <small>Fines Generated</small>
+                    <strong id="fineCount">0</strong>
+                </div>
+            </div>
+
+        </section>
+
+
+        <!-- RECENT VIOLATIONS -->
+        <section class="panel" id="violations">
+
+            <div class="panel-head">
+                <a
+                href="/api/violations/export/csv"
+                style="
+                    display: inline-block;
+                    margin-left: 8px;
+                    padding: 8px 12px;
+                    border-radius: 6px;
+                    background: #146c43;
+                    color: white;
+                    text-decoration: none;
+                "
+                >
+                ⬇ Download CSV Report
+                </a>
+
+                <div>
+                    <h2>Recent Violations</h2>
+                    <p>Latest detected littering incidents</p>
+                </div>
+
+                <button class="secondary-btn" onclick="loadData()">
+                    ↻ Refresh
+                </button>
+
+            </div>
+
+
+            <div class="table-wrap">
+
+                <table>
+
+                    <thead>
+
+                        <tr>
+                            <th>Violation ID</th>
+                            <th>Student</th>
+                            <th>Type</th>
+                            <th>Location</th>
+                            <th>Fine</th>
+                            <th>Payment</th>
+                            <th>Evidence</th>
+                            <th>Status</th>
+                        </tr>
+
+                    </thead>
+
+                    <tbody id="violationTable">
+
+                        <tr>
+                            <td colspan="6" class="empty">
+                                Loading violations...
+                            </td>
+                        </tr>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </section>
+
+        <section class="panel" id="fines">
+
+            <div class="panel-head">
+                <div>
+                    <h2>Fine Management</h2>
+                    <p>Track collected and pending violation fines</p>
+                </div>
+
+                <a
+                    href="#violations"
+                    class="secondary-btn"
+                    style="text-decoration: none;"
+                >
+                    Manage Fine Payments
+                </a>
+            </div>
+
+            <div class="cards">
+
+                <div class="card">
+                    <div>
+                        <small>Total Fine Amount</small>
+                        <strong id="fineTotalAmount">₹0</strong>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div>
+                        <small>Paid Amount</small>
+                        <strong id="finePaidAmount">₹0</strong>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div>
+                        <small>Unpaid Amount</small>
+                        <strong id="fineUnpaidAmount">₹0</strong>
+                    </div>
+                </div>
+
+            </div>
+
+        </section>
+
+        <section class="panel" id="reports">
+
+            <div style="margin-top: 24px;">
+
+                <h3>Review Status</h3>
+
+                <div
+                    style="
+                    width: 100%;
+                    height: 26px;
+                    background: #e5e7eb;
+                    border-radius: 8px;
+                    overflow: hidden;
+                    "
+                >
+                    <div
+                        id="pendingReviewBar"
+                        style="
+                        width: 0%;
+                        height: 100%;
+                        background: #f59e0b;
+                        color: white;
+                        text-align: center;
+                        line-height: 26px;
+                        transition: width 0.3s;
+                        "
+                    ></div>
+                </div>
+
+                <p id="reviewStatusText"></p>
+
+            </div>
+
+            <div class="panel-head">
+                <div>
+                    <h2>Reports &amp; Analytics</h2>
+                    <p>Live violation and fine summary</p>
+                </div>
+
+                <a
+                    href="/api/violations/export/csv"
+                    class="secondary-btn"
+                    style="text-decoration: none;"
+                >
+                    ⬇ Download CSV Report
+                </a>
+            </div>
+
+            <div class="cards">
+
+                <div class="card">
+                    <div>
+                        <small>Total Violations</small>
+                        <strong id="reportTotalViolations">0</strong>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div>
+                        <small>Pending Review</small>
+                        <strong id="reportPendingReview">0</strong>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div>
+                        <small>Paid Fines</small>
+                        <strong id="reportPaidFines">₹0</strong>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div>
+                        <small>Unpaid Fines</small>
+                        <strong id="reportUnpaidFines">₹0</strong>
+                    </div>
+                </div>
+
+            </div>
+
+            <button
+                class="secondary-btn"
+                onclick="
+                document
+                    .getElementById('violations')
+                    .scrollIntoView({ behavior: 'smooth' })
+                "
+            >
+                View Violation Report
+            </button>
+
+        </section>
+
+        <!-- STUDENTS -->
+        <section class="panel" id="students">
+
+            <div class="panel-head">
+
+                <div>
+                    <h2>Student Management</h2>
+                    <p>Registered students in GreenEye</p>
+                </div>
+
+            </div>
+
+
+            <!-- ADD STUDENT FORM -->
+            <div class="form-container">
+
+                <h3>Add New Student</h3>
+
+                <form id="studentForm" class="student-form">
+
+                    <div class="form-group">
+                        <label>USN / Student ID</label>
+
+                        <input
+                            name="studentId"
+                            placeholder="e.g. 3XX00CS123"
+                            required
+                        >
+                    </div>
+
+
+                    <div class="form-group">
+                        <label>Full Name</label>
+
+                        <input
+                            name="name"
+                            placeholder="Enter student name"
+                            required
+                        >
+                    </div>
+
+
+                    <div class="form-group">
+
+                        <label>Department</label>
+
+                        <select name="department">
+
+                            <option value="CSE">Computer Science & Engineering</option>
+                            <option value="ISE">Information Science</option>
+                            <option value="ECE">Electronics & Communication</option>
+                            <option value="EEE">Electrical & Electronics</option>
+                            <option value="ME">Mechanical Engineering</option>
+                            <option value="CIVIL">Civil Engineering</option>
+
+                        </select>
+
+                    </div>
+
+
+                    <div class="form-group">
+
+                        <label>Semester</label>
+
+                        <select name="semester">
+
+                            <option value="1">1st Semester</option>
+                            <option value="2">2nd Semester</option>
+                            <option value="3">3rd Semester</option>
+                            <option value="4">4th Semester</option>
+                            <option value="5">5th Semester</option>
+                            <option value="6">6th Semester</option>
+                            <option value="7" selected>7th Semester</option>
+                            <option value="8">8th Semester</option>
+
+                        </select>
+
+                    </div>
+
+
+                    <div class="form-group">
+
+                        <label>Email</label>
+
+                        <input
+                            name="email"
+                            type="email"
+                            placeholder="student@example.com"
+                            required
+                        >
+
+                    </div>
+
+
+                    <div class="form-group">
+
+                        <label>Phone</label>
+
+                        <input
+                            name="phone"
+                            placeholder="10-digit mobile number"
+                            maxlength="10"
+                        >
+
+                    </div>
+
+
+                    <button type="submit" class="primary-btn">
+                        + Register Student
+                    </button>
+
+                </form>
+
+
+                <p id="formMsg" class="form-message"></p>
+
+            </div>
+
+            <!-- FACE ENROLLMENT -->
+            <div class="face-enrollment">
+
+                <div class="face-header">
+                    <div>
+                        <h3>Face Enrollment</h3>
+                        <p>Capture a student's face for future identification.</p>
+                    </div>
+
+                    <span id="faceStatus" class="face-status">
+                        Not Enrolled
+                    </span>
+                </div>
+
+                <div class="face-content">
+
+                    <div class="camera-box">
+
+                        <video
+                            id="faceVideo"
+                            autoplay
+                            muted
+                            playsinline
+                        ></video>
+
+                        <div
+                            class="camera-placeholder"
+                            id="cameraPlaceholder"
+                        >
+                            📷 Camera Preview
+                        </div>
+
+                    </div>
+
+                    <div class="face-controls">
+
+                        <label>
+                            Select Student
+                        </label>
+
+                        <select id="faceStudentSelect">
+
+                            <option value="">
+                                Select a registered student
+                            </option>
+
+                        </select>
+
+                        <button
+                            type="button"
+                            id="startCameraBtn"
+                            class="secondary-btn"
+                        >
+                            📷 Start Camera
+                        </button>
+
+                        <button
+                            type="button"
+                            id="captureFaceBtn"
+                            class="primary-btn"
+                            disabled
+                        >
+                            Capture & Enroll Face
+                        </button>
+
+                        <button
+                            type="button"
+                            id="identifyFaceBtn"
+                            class="secondary-btn"
+                            disabled
+                        >
+                            🔍 Identify Face
+                        </button>
+
+                        <button id="startSurveillanceBtn">▶ Start Surveillance</button>
+                        <button id="stopSurveillanceBtn" disabled>⏹ Stop Surveillance</button>
+                        
+                        <button onclick="setViolationStatusFilter('All')">
+                        All
+                        </button>
+
+                        <button onclick="setViolationStatusFilter('Pending Review')">
+                        Pending
+                        </button>
+
+                        <button onclick="setViolationStatusFilter('Reviewed')">
+                        Reviewed
+                        </button>
+
+                        <p
+                            id="faceMessage"
+                            class="form-message"
+                        ></p>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- STUDENT TABLE -->
+
+            <div
+                class="video-upload-panel"
+                id="camera"
+                style="margin: 24px 0; padding: 20px;"
+            >
+                <h3>🎬 Detect Litter from Uploaded Video</h3>
+
+                <input
+                    type="file"
+                    id="videoFileInput"
+                    accept="video/*"
+                >
+
+                <input
+                    type="text"
+                    id="videoStudentId"
+                    placeholder="Student ID (optional)"
+                >
+
+                <button id="analyzeVideoBtn">
+                    🔍 Analyze Video
+                </button>
+
+                <p
+                    id="videoAnalysisMessage"
+                    class="form-message"
+                ></p>
+            </div>
+
+            <div class="student-list">
+
+                <h3>Registered Students</h3>
+
+                <div class="table-wrap">
+
+                    <table>
+
+                        <thead>
+
+                            <tr>
+                                <th>USN</th>
+                                <th>Name</th>
+                                <th>Department</th>
+                                <th>Semester</th>
+                                <th>Email</th>
+                                <th>Phone</th>
+                                <th>Actions</th>
+                            </tr>
+
+                        </thead>
+
+                        <tbody id="studentTable">
+
+                            <tr>
+                                <td colspan="7" class="empty">
+                                    Loading students...
+                                </td>
+                            </tr>
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        
+
+
+        <footer>
+            <p>
+                GreenEye – Anti-Littering AI Surveillance System
+            </p>
+
+            <span>College Project • CSE</span>
+        </footer>
+
+    </main>
+
+</div>
+
+
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script src="/js/dashboard.js"></script>
+
+</body>
+</html>

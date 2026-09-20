@@ -1,0 +1,372 @@
+from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import JSONResponse
+from ultralytics import YOLO
+from pathlib import Path
+import shutil
+import uuid
+import base64
+import cv2
+
+
+# ============================================================
+# LINE 1-8: Create FastAPI application
+# ============================================================
+
+app = FastAPI(
+    title="GreenEye AI Service",
+    description="YOLO26 litter detection service",
+    version="1.0"
+)
+
+
+# ============================================================
+# LINE 11-18: Load trained GreenEye model
+# ============================================================
+
+MODEL_PATH = Path("models/greeneye_litter.pt")
+
+print("Loading GreenEye YOLO model...")
+
+model = YOLO(str(MODEL_PATH))
+
+print("GreenEye YOLO model loaded successfully.")
+
+
+# ============================================================
+# LINE 21-25: Create folders
+# ============================================================
+
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+VIDEO_DIR = Path("videos")
+VIDEO_DIR.mkdir(exist_ok=True)
+
+
+# ============================================================
+# LINE 28-30: Health check
+# ============================================================
+
+@app.get("/health")
+def health():
+
+    return {
+        "ok": True,
+        "service": "GreenEye AI",
+        "model": "YOLO26n",
+        "classes": ["litter"]
+    }
+
+
+# ============================================================
+# LINE 33-70: Litter detection endpoint
+# ============================================================
+
+@app.post("/detect")
+async def detect_litter(
+    file: UploadFile = File(...)
+):
+
+    try:
+
+        # ----------------------------------------------------
+        # Save uploaded image
+        # ----------------------------------------------------
+
+        extension = Path(file.filename).suffix or ".jpg"
+
+        filename = f"{uuid.uuid4()}{extension}"
+
+        image_path = UPLOAD_DIR / filename
+
+        with open(image_path, "wb") as buffer:
+
+            shutil.copyfileobj(
+                file.file,
+                buffer
+            )
+
+
+        # ----------------------------------------------------
+        # Run YOLO detection
+        # ----------------------------------------------------
+
+        results = model(
+            str(image_path),
+            conf=0.40,
+            imgsz=640
+        )
+
+
+        result = results[0]
+
+        detections = []
+
+
+        # ----------------------------------------------------
+        # Extract detections
+        # ----------------------------------------------------
+
+        if result.boxes is not None:
+
+            for box in result.boxes:
+
+                confidence = float(
+                    box.conf[0]
+                )
+
+                class_id = int(
+                    box.cls[0]
+                )
+
+                coordinates = (
+                    box.xyxy[0]
+                    .cpu()
+                    .tolist()
+                )
+
+
+                detections.append({
+
+                    "class": result.names[class_id],
+
+                    "confidence": round(
+                        confidence,
+                        3
+                    ),
+
+                    "box": {
+                        "x1": round(
+                            coordinates[0],
+                            2
+                        ),
+
+                        "y1": round(
+                            coordinates[1],
+                            2
+                        ),
+
+                        "x2": round(
+                            coordinates[2],
+                            2
+                        ),
+
+                        "y2": round(
+                            coordinates[3],
+                            2
+                        )
+                    }
+
+                })
+
+
+        # ----------------------------------------------------
+        # Return response
+        # ----------------------------------------------------
+
+        return {
+
+            "success": True,
+
+            "litterDetected":
+                len(detections) > 0,
+
+            "count":
+                len(detections),
+
+            "detections":
+                detections
+
+        }
+
+
+    except Exception as e:
+
+        return JSONResponse(
+
+            status_code=500,
+
+            content={
+                "success": False,
+                "message": str(e)
+            }
+
+        )
+
+
+# ============================================================
+# LINE 73-75: Start message
+# ============================================================
+
+@app.post("/detect-video")
+async def detect_litter_video(
+    file: UploadFile = File(...)
+):
+
+    try:
+        extension = Path(file.filename).suffix or ".mp4"
+
+        video_filename = (
+            f"{uuid.uuid4()}{extension}"
+        )
+
+        video_path = VIDEO_DIR / video_filename
+
+        with open(video_path, "wb") as buffer:
+            shutil.copyfileobj(
+                file.file,
+                buffer
+            )
+
+        video = cv2.VideoCapture(
+            str(video_path)
+        )
+
+        if not video.isOpened():
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "message": "Unable to open video file"
+                }
+            )
+
+        fps = video.get(
+            cv2.CAP_PROP_FPS
+        ) or 25
+
+        frame_interval = max(int(fps), 1)
+        baseline_seconds = 2
+        baseline_clear = True
+        event_detected = False
+
+        frame_number = 0
+        best_confidence = 0
+        best_detections = []
+        detected_at_seconds = None
+        evidence_image_base64 = None
+
+        while True:
+            success, frame = video.read()
+
+            if not success:
+                break
+
+            if frame_number % frame_interval == 0:
+                results = model(
+                    frame,
+                    conf=0.40,
+                    imgsz=640
+                )
+
+                result = results[0]
+                detections = []
+
+                if result.boxes is not None:
+                    for box in result.boxes:
+                        confidence = float(
+                            box.conf[0]
+                        )
+
+                        class_id = int(
+                            box.cls[0]
+                        )
+
+                        detections.append({
+                            "class": result.names[class_id],
+                            "confidence": round(
+                                confidence,
+                                3
+                            )
+                        })
+
+                timestamp_seconds = frame_number / fps
+
+                if timestamp_seconds <= baseline_seconds:
+
+                    if detections:
+                        baseline_clear = False
+
+                elif baseline_clear and detections:
+
+                    highest = max(
+                        item["confidence"]
+                        for item in detections
+                    )
+
+                    if highest > best_confidence:
+                        event_detected = True
+
+                        best_confidence = highest
+                        best_detections = detections
+
+                        detected_at_seconds = round(
+                            timestamp_seconds,
+                            1
+                        )
+
+                        image_ok, image_buffer = (
+                            cv2.imencode(
+                                ".jpg",
+                                frame
+                            )
+                        )
+
+                        if image_ok:
+                            evidence_image_base64 = (
+                                base64.b64encode(
+                                    image_buffer
+                                ).decode("utf-8")
+                            )
+
+                    if highest > best_confidence:
+                        best_confidence = highest
+                        best_detections = detections
+                        detected_at_seconds = round(
+                            frame_number / fps,
+                            1
+                        )
+
+                        image_ok, image_buffer = (
+                            cv2.imencode(
+                                ".jpg",
+                                frame
+                            )
+                        )
+
+                        if image_ok:
+                            evidence_image_base64 = (
+                                base64.b64encode(
+                                    image_buffer
+                                ).decode("utf-8")
+                            )
+
+            frame_number += 1
+
+        video.release()
+
+        return {
+            "success": True,
+            "eventDetected": event_detected,
+            "litterDetected":
+                len(best_detections) > 0,
+            "count": len(best_detections),
+            "detections": best_detections,
+            "highestConfidence":
+                best_confidence,
+            "detectedAtSeconds":
+                detected_at_seconds,
+            "evidenceImageBase64":
+                evidence_image_base64
+        }
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": str(e)
+            }
+        )
+
+print("GreenEye AI API ready.")
