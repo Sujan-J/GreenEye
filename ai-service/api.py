@@ -235,7 +235,7 @@ async def detect_litter_video(
             cv2.CAP_PROP_FPS
         ) or 25
 
-        frame_interval = max(int(fps), 1)
+        frame_interval = max(int(fps * 2), 1)
         baseline_seconds = 2
         baseline_clear = True
         event_detected = False
@@ -256,7 +256,7 @@ async def detect_litter_video(
                 results = model(
                     frame,
                     conf=0.40,
-                    imgsz=640
+                    imgsz=416
                 )
 
                 result = results[0]
@@ -344,6 +344,10 @@ async def detect_litter_video(
             frame_number += 1
 
         video.release()
+        try:
+            video_path.unlink()
+        except Exception:
+            pass
 
         return {
             "success": True,
