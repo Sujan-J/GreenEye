@@ -36,6 +36,14 @@
                 🚨 <span>Violations</span>
             </a>
 
+            <a href="#test-records">
+                🧪 <span>Test Records</span>
+            </a>
+
+            <a href="#surveillance-activity">
+                📹 <span>Surveillance Activity</span>
+            </a>
+
             <a href="#camera">
                 📹 <span>Live Camera</span>
             </a>
@@ -87,7 +95,6 @@
 
         </header>
 
-
         <!-- DASHBOARD CARDS -->
         <section id="dashboard" class="cards">
 
@@ -110,7 +117,6 @@
                 </div>
             </div>
 
-
             <div class="card">
                 <div class="card-icon pending-icon">⏳</div>
 
@@ -120,7 +126,6 @@
                 </div>
             </div>
 
-
             <div class="card">
                 <div class="card-icon fine-icon">₹</div>
 
@@ -128,6 +133,33 @@
                     <small>Fines Generated</small>
                     <strong id="fineCount">0</strong>
                 </div>
+            </div>
+
+        </section>
+
+        <!-- GREENEYE ANALYTICS DASHBOARD -->
+        <section id="analyticsDashboard" style="margin-top:25px;">
+
+            <h2>📊 Surveillance Analytics</h2>
+            <p>Detection trends and violation insights</p>
+
+            <div class="analytics-grid">
+
+                <div class="analytics-card">
+                    <h3>Daily Detection Trends</h3>
+                    <canvas id="dailyDetectionChart"></canvas>
+                </div>
+
+                <div class="analytics-card">
+                    <h3>Violation Review Status</h3>
+                    <canvas id="reviewStatusChart"></canvas>
+                </div>
+
+                <div class="analytics-card">
+                    <h3>Detection Confidence Analysis</h3>
+                    <canvas id="confidenceChart"></canvas>
+                </div>
+
             </div>
 
         </section>
@@ -163,7 +195,6 @@
 
             </div>
 
-
             <div class="table-wrap">
 
                 <table>
@@ -194,6 +225,256 @@
                     </tbody>
 
                 </table>
+
+            </div>
+
+        </section>
+
+        <!-- TEST RECORDS SECTION -->
+        <section class="panel" id="test-records">
+
+            <div class="panel-head">
+                <div>
+                    <h2>🧪 Test Records</h2>
+                    <p>YOLO, Cloudinary and MongoDB integration test results</p>
+                </div>
+
+                <button class="secondary-btn" onclick="loadTestRecords()">
+                    ↻ Refresh
+                </button>
+            </div>
+
+            <div class="form-group" style="margin: 20px 0;">
+                <label for="testImageInput">
+                    Upload Sample Litter Image
+                </label>
+
+                <input
+                    type="file"
+                    id="testImageInput"
+                    accept="image/*"
+                >
+
+                <button
+                    class="primary-btn"
+                    onclick="runSafeLitterTest()"
+                    style="margin-top: 10px;"
+                >
+                    🧪 Run Safe AI Test
+                </button>
+
+                <p id="testImageMessage" class="form-message"></p>
+            </div>
+
+            <div class="cards">
+                <div class="card">
+                    <div class="card-icon pending-icon">🧪</div>
+                    <div>
+                        <small>Total Test Records</small>
+                        <strong id="testRecordCount">0</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Test ID</th>
+                            <th>Type</th>
+                            <th>Confidence</th>
+                            <th>Evidence</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="testRecordsTable">
+                        <tr>
+                            <td colspan="7" class="empty">
+                                Click Refresh to load test records.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+        </section>
+
+        <!-- SURVEILLANCE ACTIVITY SECTION -->
+        <section class="panel" id="surveillance-activity">
+
+            <div class="panel-head">
+                <div>
+                    <h2>📹 Surveillance Activity</h2>
+                    <p>Live CCTV detection history</p>
+                </div>
+
+                <button class="secondary-btn" onclick="loadSurveillanceActivity()">
+                    ↻ Refresh
+                </button>
+                <button
+                    class="secondary-btn"
+                    onclick="exportSurveillanceCSV()"
+                >
+                    ⬇ Export CSV
+                </button>
+            </div>
+
+            <div class="cards">
+
+                <div class="card">
+                    <div>
+                        <small>Total Detections</small>
+                        <strong id="surveillanceTotal">0</strong>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div>
+                        <small>Pending Review</small>
+                        <strong id="surveillancePending">0</strong>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div>
+                        <small>Reviewed</small>
+                        <strong id="surveillanceReviewed">0</strong>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div>
+                        <small>Average Confidence</small>
+                        <strong id="surveillanceConfidence">0%</strong>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- SURVEILLANCE FILTERS -->
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin:15px 0;">
+
+                <input
+                    type="text"
+                    id="surveillanceSearch"
+                    placeholder="🔍 Search by Violation ID or Student ID..."
+                    oninput="surveillanceCurrentPage = 1; filterSurveillanceActivity()"
+                    style="
+                        padding: 10px;
+                        border: 1px solid #ddd;
+                        border-radius: 8px;
+                        width: 280px;
+                        outline: none;
+                    "
+                >
+
+                <select
+                    id="surveillanceStatus"
+                    onchange="filterSurveillanceActivity()"
+                >
+                    <option value="">All Statuses</option>
+                    <option value="Pending Review">Pending Review</option>
+                    <option value="Reviewed">Reviewed</option>
+                </select>
+
+                <select
+                    id="surveillanceType"
+                    onchange="filterSurveillanceActivity()"
+                >
+                    <option value="">All Types</option>
+                    <option value="Littering">Littering</option>
+                    <option value="Suspected Littering Event">Suspected Littering Event</option>
+                </select>
+
+                <!-- DATE RANGE FILTER -->
+                <input
+                    type="date"
+                    id="surveillanceStartDate"
+                    onchange="surveillanceCurrentPage = 1; filterSurveillanceActivity()"
+                    title="Start Date"
+                    style="padding:10px; border:1px solid #ddd; border-radius:8px;"
+                >
+
+                <input
+                    type="date"
+                    id="surveillanceEndDate"
+                    onchange="surveillanceCurrentPage = 1; filterSurveillanceActivity()"
+                    title="End Date"
+                    style="padding:10px; border:1px solid #ddd; border-radius:8px;"
+                >
+
+            </div>
+
+            <button
+                type="button"
+                onclick="clearSurveillanceFilters()"
+                class="secondary-btn"
+            >
+                ✖ Clear Filters
+            </button>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Violation ID</th>
+                            <th>Student ID</th>
+                            <th>Type</th>
+                            <th>Confidence</th>
+                            <th>Evidence</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="surveillanceTable">
+                        <tr>
+                            <td colspan="7" class="empty">
+                                Click Refresh to load surveillance activity.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <!-- SURVEILLANCE PAGINATION -->
+                <div class="pagination" id="surveillancePagination"
+                    style="display:flex; justify-content:flex-end; align-items:center; gap:12px; margin-top:15px;">
+
+                    <span id="surveillancePageInfo">Page 1 of 1</span>
+
+                    <label for="surveillancePageSize">Show:</label>
+
+                    <select
+                        id="surveillancePageSize"
+                        onchange="changeSurveillancePageSize()"
+                        style="padding:6px; border-radius:6px;"
+                    >
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                    </select>
+
+
+                    <button
+                        class="secondary-btn"
+                        id="surveillancePrev"
+                        onclick="changeSurveillancePage(-1)"
+                        disabled>
+                        ← Previous
+                    </button>
+
+                    <button
+                        class="secondary-btn"
+                        id="surveillanceNext"
+                        onclick="changeSurveillancePage(1)"
+                        disabled>
+                        Next →
+                    </button>
+
+                </div>
 
             </div>
 
@@ -624,10 +905,64 @@
             </div>
 
         </section>
-
-
         
+        <!-- EVIDENCE IMAGE PREVIEW MODAL -->
+        <div id="evidenceModal"
+            onclick="if(event.target === this) closeEvidencePreview()"
+            style="
+                display: none;
+                position: fixed;
+                inset: 0;
+                background: rgba(0, 0, 0, 0.85);
+                z-index: 9999;
+                justify-content: center;
+                align-items: center;
+                padding: 20px;
+            ">
 
+            <div style="
+                background: white;
+                padding: 20px;
+                border-radius: 12px;
+                max-width: 800px;
+                width: 100%;
+                text-align: center;
+                position: relative;
+            ">
+
+                <button
+                    onclick="closeEvidencePreview()"
+                    style="
+                        position: absolute;
+                        top: 10px;
+                        right: 10px;
+                        border: none;
+                        background: #dc3545;
+                        color: white;
+                        padding: 7px 12px;
+                        border-radius: 5px;
+                        cursor: pointer;
+                    ">
+                    ✕ Close
+                </button>
+
+                <h3>Evidence Image</h3>
+
+                <img
+                    id="evidencePreviewImage"
+                    src=""
+                    alt="Violation evidence"
+                    style="
+                        max-width: 100%;
+                        max-height: 65vh;
+                        object-fit: contain;
+                        margin-top: 15px;
+                        border-radius: 8px;
+                    "
+                >
+
+            </div>
+        </div>
 
         <footer>
             <p>
@@ -643,6 +978,10 @@
 
 
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+<!-- Chart.js for Surveillance Analytics -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <script src="/js/dashboard.js"></script>
 
 </body>

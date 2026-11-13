@@ -660,3 +660,38 @@ body.dark-theme .evidence-thumbnail:hover {
 body.dark-theme .evidence-error {
     color: #ff8a80;
 }
+
+/* ===== GREENEYE ANALYTICS CHART LAYOUT ===== */
+
+.analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.analytics-card {
+    position: relative;
+    min-width: 0;
+    height: 320px;
+    padding: 18px;
+    border: 1px solid #2d4038;
+    border-radius: 12px;
+    background: #17251f;
+}
+
+.analytics-card h3 {
+    margin-bottom: 15px;
+    font-size: 15px;
+}
+
+.analytics-card canvas {
+    width: 100% !important;
+    height: 250px !important;
+}
+
+@media (max-width: 768px) {
+    .analytics-grid {
+        grid-template-columns: 1fr;
+    }
+}

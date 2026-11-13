@@ -3,9 +3,14 @@
 let faceModelsLoaded = false;
 let identifiedStudentId = null;
 let surveillanceTimer = null;
+let surveillanceRecords = [];
+// SURVEILLANCE PAGINATION
+let surveillanceCurrentPage = 1;
+let surveillancePageSize = 10;
 let surveillanceRunning = false;
 let litterDetectionRunning = false;
 let liveCameraBaselineReady = false;
+let consecutiveClearFrames = 0;
 let violationStatusFilter =
   localStorage.getItem('violationStatusFilter') || 'All';
   
@@ -541,6 +546,212 @@ async function getJSON(url) {
     return response.json();
 }
 
+/* ================= GREENEYE ANALYTICS CHARTS ================= */
+
+function updateAnalyticsCharts(violations) {
+
+    if (typeof Chart === 'undefined') {
+        console.error('Chart.js is not loaded.');
+        return;
+    }
+
+    // 1. DAILY DETECTION TRENDS (LAST 7 DAYS)
+
+    const dailyLabels = [];
+    const dailyCounts = [];
+
+    for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setHours(0, 0, 0, 0);
+        date.setDate(date.getDate() - i);
+
+        dailyLabels.push(
+            date.toLocaleDateString('en-IN', {
+                day: '2-digit',
+                month: 'short'
+            })
+        );
+
+        const count = violations.filter(record => {
+            if (!record.createdAt) return false;
+
+            const recordDate = new Date(record.createdAt);
+
+            return !isNaN(recordDate.getTime()) &&
+                recordDate.toDateString() === date.toDateString();
+        }).length;
+
+        dailyCounts.push(count);
+    }
+
+    // 2. REVIEW STATUS
+
+    const pendingCount = violations.filter(
+        v => v.status === 'Pending Review'
+    ).length;
+
+    const reviewedCount = violations.filter(
+        v => v.status === 'Reviewed'
+    ).length;
+
+    const otherCount = violations.length -
+        pendingCount - reviewedCount;
+
+    // 3. CONFIDENCE DISTRIBUTION
+
+    const confidenceRanges = [
+        '0–20%',
+        '21–40%',
+        '41–60%',
+        '61–80%',
+        '81–100%'
+    ];
+
+    const confidenceCounts = [0, 0, 0, 0, 0];
+
+    violations.forEach(record => {
+
+        let confidence = Number(record.confidence || 0);
+
+        if (!Number.isFinite(confidence)) return;
+
+        if (confidence <= 1) {
+            confidence *= 100;
+        }
+
+        if (confidence < 0 || confidence > 100) return;
+
+        const index = Math.min(
+            Math.floor(confidence / 20),
+            4
+        );
+
+        confidenceCounts[index]++;
+    });
+
+    // DESTROY OLD CHARTS BEFORE RECREATING
+
+    const chartIds = [
+        'dailyDetectionChart',
+        'reviewStatusChart',
+        'confidenceChart'
+    ];
+
+    chartIds.forEach(id => {
+        const existingChart = Chart.getChart(id);
+
+        if (existingChart) {
+            existingChart.destroy();
+        }
+    });
+
+    // DAILY DETECTION LINE CHART
+
+    new Chart(
+        document.getElementById('dailyDetectionChart'),
+        {
+            type: 'line',
+
+            data: {
+                labels: dailyLabels,
+                datasets: [{
+                    label: 'Detections',
+                    data: dailyCounts,
+                    borderColor: '#16a34a',
+                    backgroundColor: 'rgba(22, 163, 74, 0.15)',
+                    fill: true,
+                    tension: 0.35
+                }]
+            },
+
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        }
+                    }
+                }
+            }
+        }
+    );
+
+    // REVIEW STATUS DOUGHNUT CHART
+
+    new Chart(
+        document.getElementById('reviewStatusChart'),
+        {
+            type: 'doughnut',
+
+            data: {
+                labels: [
+                    'Pending Review',
+                    'Reviewed',
+                    'Other'
+                ],
+
+                datasets: [{
+                    data: [
+                        pendingCount,
+                        reviewedCount,
+                        otherCount
+                    ],
+                    backgroundColor: [
+                        '#f59e0b',
+                        '#16a34a',
+                        '#64748b'
+                    ]
+                }]
+            },
+
+            options: {
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        }
+    );
+
+    // CONFIDENCE BAR CHART
+
+    new Chart(
+        document.getElementById('confidenceChart'),
+        {
+            type: 'bar',
+
+            data: {
+                labels: confidenceRanges,
+
+                datasets: [{
+                    label: 'Number of Detections',
+                    data: confidenceCounts,
+                    backgroundColor: '#3b82f6',
+                    borderRadius: 6
+                }]
+            },
+
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        }
+                    }
+                }
+            }
+        }
+    );
+}
 
 /* ================= LOAD DASHBOARD ================= */
 
@@ -553,6 +764,7 @@ async function loadData() {
             getJSON('/api/violations')
         ]);
 
+        updateAnalyticsCharts(violations);
 
         /* Dashboard counts */
 
@@ -847,6 +1059,507 @@ async function loadData() {
             </tr>
         `;
     }
+}
+
+/* ================= LOAD TEST RECORDS ================= */
+
+async function loadTestRecords() {
+    const table = document.getElementById('testRecordsTable');
+
+    if (!table) return;
+
+    table.innerHTML = `
+        <tr>
+            <td colspan="6" class="empty">Loading test records...</td>
+        </tr>
+    `;
+
+    try {
+        const records = await getJSON('/api/violations/test-records');
+        
+        document.getElementById('testRecordCount').textContent =
+            records.length;
+
+        if (!records.length) {
+            table.innerHTML = `
+                <tr>
+                    <td colspan="6" class="empty">No test records found.</td>
+                </tr>
+            `;
+            return;
+        }
+
+        table.innerHTML = records.map(record => {
+            const confidence = Number(record.confidence || 0);
+            const confidenceText = confidence <= 1
+                ? `${(confidence * 100).toFixed(1)}%`
+                : `${confidence.toFixed(1)}%`;
+
+            const date = record.createdAt
+                ? new Date(record.createdAt).toLocaleString()
+                : '-';
+
+            
+            const evidence = record.evidenceImage
+                ? `<button
+                        onclick="openEvidencePreview('${escapeHTML(record.evidenceImage)}')"
+                        style="
+                            background: #146c43;
+                            color: white;
+                            border: none;
+                            padding: 6px 10px;
+                            border-radius: 5px;
+                            cursor: pointer;
+                        "
+                    >
+                        View Evidence
+                </button>`
+                : '—';
+
+            return `
+                <tr>
+                    <td>${escapeHTML(record.violationId || '-')}</td>
+                    <td>${escapeHTML(record.type || 'Test')}</td>
+                    <td>${confidenceText}</td>
+                    <td>${evidence}</td>
+                    <td>${escapeHTML(record.status || '-')}</td>
+                    <td>${escapeHTML(date)}</td>
+                    <td>
+                        <button
+                            onclick="deleteTestRecord('${record._id}')"
+                            style="
+                                background: #dc3545;
+                                color: white;
+                                border: none;
+                                padding: 6px 10px;
+                                border-radius: 5px;
+                                cursor: pointer;
+                            "
+                        >
+                            🗑 Delete
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+    } catch (error) {
+        console.error('Test records loading error:', error);
+
+        table.innerHTML = `
+            <tr>
+                <td colspan="6" class="empty">
+                    Unable to load test records. Check whether test mode is enabled.
+                </td>
+            </tr>
+        `;
+    }
+}
+
+/* ============ SURVEILLANCE ACTIVITY ============ */
+
+async function loadSurveillanceActivity() {
+    const table = document.getElementById('surveillanceTable');
+
+    if (!table) return;
+
+    table.innerHTML = `
+        <tr>
+            <td colspan="7" class="empty">Loading surveillance activity...</td>
+        </tr>
+    `;
+
+    try {
+        surveillanceRecords = await getJSON('/api/violations');
+        // UPDATE SURVEILLANCE STATISTICS
+
+        const total = surveillanceRecords.length;
+
+        const pending = surveillanceRecords.filter(
+            record => record.status === 'Pending Review'
+        ).length;
+
+        const reviewed = surveillanceRecords.filter(
+            record => record.status === 'Reviewed'
+        ).length;
+
+        const averageConfidence = total
+            ? surveillanceRecords.reduce((sum, record) => {
+                const value = Number(record.confidence || 0);
+                return sum + (value <= 1 ? value * 100 : value);
+            }, 0) / total
+            : 0;
+
+        document.getElementById('surveillanceTotal').textContent = total;
+
+        document.getElementById('surveillancePending').textContent = pending;
+
+        document.getElementById('surveillanceReviewed').textContent = reviewed;
+
+        document.getElementById('surveillanceConfidence').textContent =
+            averageConfidence.toFixed(1) + '%';
+
+        if (!surveillanceRecords.length) {
+            table.innerHTML = `
+                <tr>
+                    <td colspan="7" class="empty">No surveillance records found.</td>
+                </tr>
+            `;
+            return;
+        }
+
+        filterSurveillanceActivity();
+
+    } catch (error) {
+        console.error('Surveillance activity error:', error);
+
+        table.innerHTML = `
+            <tr>
+                <td colspan="7" class="empty">Unable to load surveillance activity.</td>
+            </tr>
+        `;
+    }
+}
+
+function filterSurveillanceActivity() {
+    const search = (
+        document.getElementById('surveillanceSearch')?.value || ''
+    ).toLowerCase();
+
+    const status = document.getElementById('surveillanceStatus')?.value || '';
+    const type = document.getElementById('surveillanceType')?.value || '';
+
+    const startDate =
+        document.getElementById('surveillanceStartDate')?.value || '';
+
+    const endDate =
+        document.getElementById('surveillanceEndDate')?.value || '';
+
+
+    const filteredRecords = surveillanceRecords.filter(record => {
+        const matchesSearch =
+            (record.violationId || '').toLowerCase().includes(search) ||
+            (record.studentId || '').toLowerCase().includes(search);
+
+        const matchesStatus = !status || record.status === status;
+        const matchesType = !type || record.type === type;
+
+        // DATE RANGE FILTER
+        const recordDate = record.createdAt
+            ? new Date(record.createdAt)
+            : null;
+
+        const startBoundary = startDate
+            ? new Date(startDate + 'T00:00:00')
+            : null;
+
+        const endBoundary = endDate
+            ? new Date(endDate + 'T00:00:00')
+            : null;
+
+        if (endBoundary) {
+            endBoundary.setDate(endBoundary.getDate() + 1);
+        }
+
+        const matchesStartDate =
+            !startBoundary ||
+            (recordDate && recordDate >= startBoundary);
+
+        const matchesEndDate =
+            !endBoundary ||
+            (recordDate && recordDate < endBoundary);
+
+        return matchesSearch &&
+            matchesStatus &&
+            matchesType &&
+            matchesStartDate &&
+            matchesEndDate;
+
+    });
+
+    const table = document.getElementById('surveillanceTable');
+    // Calculate pagination
+    const totalRecords = filteredRecords.length;
+
+    const totalPages = Math.max(
+        1,
+        Math.ceil(totalRecords / surveillancePageSize)
+    );
+
+    surveillanceCurrentPage = Math.min(
+        surveillanceCurrentPage,
+        totalPages
+    );
+
+    const startIndex =
+        (surveillanceCurrentPage - 1) * surveillancePageSize;
+
+    const paginatedRecords = filteredRecords.slice(
+        startIndex,
+        startIndex + surveillancePageSize
+    );
+
+    // Update pagination information
+    document.getElementById('surveillancePageInfo').textContent =
+        `Page ${surveillanceCurrentPage} of ${totalPages}`;
+
+    document.getElementById('surveillancePrev').disabled =
+        surveillanceCurrentPage === 1;
+
+    document.getElementById('surveillanceNext').disabled =
+        surveillanceCurrentPage === totalPages;
+
+    if (!filteredRecords.length) {
+        table.innerHTML = `
+            <tr>
+                <td colspan="7" class="empty">No matching records found.</td>
+            </tr>
+        `;
+        return;
+    }
+
+    table.innerHTML = paginatedRecords.map(record => {
+        const confidence = Number(record.confidence || 0);
+        const confidenceText = confidence <= 1
+            ? (confidence * 100).toFixed(1) + '%'
+            : confidence.toFixed(1) + '%';
+
+        const date = record.createdAt
+            ? new Date(record.createdAt).toLocaleString()
+            : '-';
+
+        const evidence = record.evidenceImage
+            ? `<button onclick="openEvidencePreview('${escapeHTML(record.evidenceImage)}')" class="secondary-btn">View Evidence</button>`
+            : '—';
+
+        return `
+            <tr>
+                <td>${escapeHTML(record.violationId || '-')}</td>
+                <td>${escapeHTML(record.studentId || '-')}</td>
+                <td>${escapeHTML(record.type || '-')}</td>
+                <td>${confidenceText}</td>
+                <td>${evidence}</td>
+                <td>${escapeHTML(record.status || '-')}</td>
+                <td>${escapeHTML(date)}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+
+// CHANGE SURVEILLANCE PAGE
+function changeSurveillancePage(direction) {
+    surveillanceCurrentPage += direction;
+    filterSurveillanceActivity();
+}
+
+// CHANGE RECORDS PER PAGE
+function changeSurveillancePageSize() {
+    const selectedSize = Number(
+        document.getElementById('surveillancePageSize').value
+    );
+
+    if (![10, 20, 50].includes(selectedSize)) return;
+
+    surveillancePageSize = selectedSize;
+    surveillanceCurrentPage = 1;
+
+    filterSurveillanceActivity();
+}
+
+function exportSurveillanceCSV() {
+
+    const search = (
+        document.getElementById('surveillanceSearch')?.value || ''
+    ).toLowerCase();
+
+    const status =
+        document.getElementById('surveillanceStatus')?.value || '';
+
+    const type =
+        document.getElementById('surveillanceType')?.value || '';
+
+    const startDate =
+        document.getElementById('surveillanceStartDate')?.value || '';
+
+    const endDate =
+        document.getElementById('surveillanceEndDate')?.value || '';
+
+    // Validate date range
+    if (startDate && endDate && startDate > endDate) {
+        alert('Start Date cannot be after End Date.');
+        return;
+    }
+
+    const startBoundary = startDate
+        ? new Date(startDate + 'T00:00:00')
+        : null;
+
+    const endBoundary = endDate
+        ? new Date(endDate + 'T00:00:00')
+        : null;
+
+    if (endBoundary) {
+        endBoundary.setDate(endBoundary.getDate() + 1);
+    }
+
+    const records = surveillanceRecords.filter(record => {
+
+        const matchesSearch =
+            (record.violationId || '').toLowerCase().includes(search) ||
+            (record.studentId || '').toLowerCase().includes(search);
+
+        const matchesStatus =
+            !status || record.status === status;
+
+        const matchesType =
+            !type || record.type === type;
+
+        const recordDate = record.createdAt
+            ? new Date(record.createdAt)
+            : null;
+
+        const matchesStartDate =
+            !startBoundary ||
+            (recordDate && recordDate >= startBoundary);
+
+        const matchesEndDate =
+            !endBoundary ||
+            (recordDate && recordDate < endBoundary);
+
+        return matchesSearch &&
+            matchesStatus &&
+            matchesType &&
+            matchesStartDate &&
+            matchesEndDate;
+    });
+
+    if (!records.length) {
+        alert('No surveillance records to export.');
+        return;
+    }
+
+    const headers = [
+        'Violation ID',
+        'Student ID',
+        'Type',
+        'Confidence',
+        'Status',
+        'Date'
+    ];
+
+    const safeCSV = value => {
+        let text = String(value ?? '');
+
+        if (/^[\s]*[=+\-@]/.test(text)) {
+            text = "'" + text;
+        }
+
+        return '"' + text.replace(/"/g, '""') + '"';
+    };
+
+    const rows = records.map(record => [
+        record.violationId,
+        record.studentId,
+        record.type,
+        (Number(record.confidence || 0) <= 1
+            ? Number(record.confidence || 0) * 100
+            : Number(record.confidence || 0)).toFixed(1) + '%',
+        record.status,
+        record.createdAt
+            ? new Date(record.createdAt).toLocaleString()
+            : '-'
+    ]);
+
+    const csv = [
+        headers,
+        ...rows
+    ].map(row => row.map(safeCSV).join(',')).join('\n');
+
+    const blob = new Blob(
+        ['\uFEFF' + csv],
+        { type: 'text/csv;charset=utf-8;' }
+    );
+
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'GreenEye_Surveillance_Report.csv';
+    link.click();
+
+    URL.revokeObjectURL(url);
+}
+
+function clearSurveillanceFilters() {
+    document.getElementById('surveillanceSearch').value = '';
+    document.getElementById('surveillanceStatus').value = '';
+    document.getElementById('surveillanceType').value = '';
+
+    // Clear date filters
+    document.getElementById('surveillanceStartDate').value = '';
+    document.getElementById('surveillanceEndDate').value = '';
+
+    // Reset pagination
+    surveillanceCurrentPage = 1;
+
+    filterSurveillanceActivity();
+}
+
+
+/* ================= DELETE TEST RECORD ================= */
+
+async function deleteTestRecord(id) {
+    const confirmed = confirm(
+        'Are you sure you want to delete this test record?'
+    );
+
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch(
+            `/api/violations/test-records/${encodeURIComponent(id)}`,
+            {
+                method: 'DELETE'
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                result.message || 'Unable to delete test record.'
+            );
+        }
+
+        alert('Test record deleted successfully.');
+
+        await loadTestRecords();
+
+    } catch (error) {
+        console.error('Delete test record error:', error);
+        alert('Delete failed: ' + error.message);
+    }
+}
+
+/* ================= EVIDENCE IMAGE PREVIEW ================= */
+
+function openEvidencePreview(imageUrl) {
+    const modal = document.getElementById('evidenceModal');
+    const image = document.getElementById('evidencePreviewImage');
+
+    if (!modal || !image || !imageUrl) return;
+
+    image.src = imageUrl;
+    modal.style.display = 'flex';
+}
+
+function closeEvidencePreview() {
+    const modal = document.getElementById('evidenceModal');
+    const image = document.getElementById('evidencePreviewImage');
+
+    modal.style.display = 'none';
+    image.src = '';
 }
 
 async function markFinePaid(id) {
@@ -1364,6 +2077,7 @@ function startSurveillance() {
     }
 
     liveCameraBaselineReady = false;
+    consecutiveClearFrames = 0;
     surveillanceRunning = true;
 
     const startButton =
@@ -1459,6 +2173,11 @@ async function checkLiveCameraForNewLitter() {
   }
 
   if (!result.litterDetected) {
+    consecutiveClearFrames += 1;
+    if (consecutiveClearFrames < 2) {
+      message.textContent = 'Clear frame found; confirming baseline...';
+      return;
+    }
     liveCameraBaselineReady = true;
 
     message.textContent =
@@ -1471,6 +2190,7 @@ async function checkLiveCameraForNewLitter() {
   }
 
   if (!liveCameraBaselineReady) {
+    consecutiveClearFrames = 0;
     message.textContent =
       'Litter is already visible. Waiting for a clear baseline.';
 
@@ -1481,6 +2201,7 @@ async function checkLiveCameraForNewLitter() {
   }
 
   liveCameraBaselineReady = false;
+  consecutiveClearFrames = 0;
 
   message.textContent =
     '🚨 New litter detected. Recording suspected event...';
@@ -1498,7 +2219,14 @@ async function checkLiveCameraForNewLitter() {
         }
 
         if (identifiedStudentId) {
-            await checkLiveCameraForNewLitter();
+            try {
+                await checkLiveCameraForNewLitter();
+            } catch (error) {
+                console.error('Surveillance cycle error:', error);
+                const message = document.getElementById('faceMessage');
+                message.textContent = 'Surveillance check failed: ' + error.message;
+                message.className = 'form-message error';
+            }
         }
 
         if (surveillanceRunning) {
@@ -1513,10 +2241,12 @@ async function checkLiveCameraForNewLitter() {
 function stopSurveillance() {
 
     surveillanceRunning = false;
+    liveCameraBaselineReady = false;
+    consecutiveClearFrames = 0;
 
     if (surveillanceTimer) {
 
-        clearInterval(surveillanceTimer);
+        clearTimeout(surveillanceTimer);
         surveillanceTimer = null;
 
     }
@@ -1550,6 +2280,13 @@ function stopSurveillance() {
 
 loadData();
 loadFaceModels();
+loadTestRecords();
+loadSurveillanceActivity();
+
+// AUTO REFRESH SURVEILLANCE EVERY 10 SECONDS
+setInterval(() => {
+    loadSurveillanceActivity();
+}, 10000);
 
 document
   .getElementById('analyzeVideoBtn')
@@ -1784,3 +2521,66 @@ themeToggle.addEventListener(
         applyTheme(newTheme);
     }
 );
+
+
+
+/* ================= SAFE AI LITTER TEST ================= */
+
+async function runSafeLitterTest() {
+    const fileInput = document.getElementById('testImageInput');
+    const message = document.getElementById('testImageMessage');
+
+    const file = fileInput.files[0];
+
+    if (!file) {
+        message.textContent = 'Please select a sample image first.';
+        message.className = 'form-message error';
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    message.textContent = 'Analyzing image with YOLO. Please wait...';
+    message.className = 'form-message';
+
+    try {
+        const response = await fetch(
+            '/api/violations/analyze-test-save',
+            {
+                method: 'POST',
+                body: formData
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                result.message || 'AI test failed.'
+            );
+        }
+
+        if (result.litterDetected) {
+            message.textContent =
+                'Success! Litter detected. Test record saved with ₹0 fine.';
+
+            message.className = 'form-message success';
+
+            await loadTestRecords();
+        } else {
+            message.textContent =
+                'Test completed. No litter detected, so no record was created.';
+
+            message.className = 'form-message';
+        }
+
+    } catch (error) {
+        console.error('Safe AI test error:', error);
+
+        message.textContent =
+            'Test failed: ' + error.message;
+
+        message.className = 'form-message error';
+    }
+}
