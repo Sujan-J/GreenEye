@@ -159,15 +159,13 @@ async function enrollFace() {
         message.textContent =
             'Face detected. Saving face data...';
 
-        const response = await fetch(
+        const response = await apiFetch(
             `/api/students/${encodeURIComponent(studentId)}`,
             {
                 method: 'PUT',
-
                 headers: {
                     'Content-Type': 'application/json'
                 },
-
                 body: JSON.stringify({
                     faceDescriptor: descriptor
                 })
@@ -483,7 +481,7 @@ async function analyzeUploadedVideo() {
     'form-message';
 
   try {
-    const response = await fetch(
+    const response = await apiFetch(
       '/api/violations/analyze-video',
       {
         method: 'POST',
@@ -536,8 +534,31 @@ async function analyzeUploadedVideo() {
 
 /* ================= EXISTING DASHBOARD CODE ================= */
 
+async function apiFetch(url, options = {}) {
+    const token = localStorage.getItem('greeneyeToken');
+
+    const headers = new Headers(options.headers || {});
+
+    if (token) {
+        headers.set('Authorization', `Bearer ${token}`);
+    }
+
+    const response = await fetch(url, {
+        ...options,
+        headers
+    });
+
+    if (response.status === 401) {
+        localStorage.removeItem('greeneyeToken');
+        window.location.replace('/login.html');
+        throw new Error('Session expired. Please log in again.');
+    }
+
+    return response;
+}
+
 async function getJSON(url) {
-    const response = await fetch(url);
+    const response = await apiFetch(url);
 
     if (!response.ok) {
         throw new Error(`Request failed: ${response.status}`);
@@ -545,6 +566,7 @@ async function getJSON(url) {
 
     return response.json();
 }
+
 
 /* ================= GREENEYE ANALYTICS CHARTS ================= */
 
@@ -970,18 +992,19 @@ async function loadData() {
                                                     : `/${imagePath}`;
 
                                         return `
-                                            <a
-                                                href="${imageUrl}"
-                                                target="_blank"
-                                                rel="noopener noreferrer"
+                                            <button
+                                                type="button"
+                                                onclick="openEvidencePreview('${escapeHTML(imageUrl)}')"
                                                 class="evidence-link"
+                                                style="border:none; background:transparent; cursor:pointer;"
                                             >
                                                 <img
-                                                    src="${imageUrl}"
+                                                    src="${imageUrl.startsWith('http') ? imageUrl : ''}"
+                                                    data-evidence-url="${escapeHTML(imageUrl)}"
                                                     alt="Evidence for ${escapeHTML(v.violationId)}"
                                                     class="evidence-thumbnail"
                                                     loading="lazy"
-                                                    onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';"
+                                                    onerror="loadProtectedEvidenceThumbnail(this)"
                                                 >
 
                                                 <span
@@ -990,7 +1013,7 @@ async function loadData() {
                                                 >
                                                     Image unavailable
                                                 </span>
-                                            </a>
+                                            </button>
                                         `;
                                     })()
                                     : '—'
@@ -1060,6 +1083,38 @@ async function loadData() {
         `;
     }
 }
+
+
+async function loadProtectedEvidenceThumbnail(img) {
+    if (img.dataset.retrying === 'true') return;
+
+    img.dataset.retrying = 'true';
+
+    try {
+        const imageUrl = img.dataset.evidenceUrl;
+
+        const response = await apiFetch(imageUrl);
+
+        if (!response.ok) {
+            throw new Error('Unable to load evidence thumbnail.');
+        }
+
+        const blob = await response.blob();
+
+        img.src = URL.createObjectURL(blob);
+
+    } catch (error) {
+        console.error('Thumbnail loading error:', error);
+        img.style.display = 'none';
+
+        const errorMessage = img.nextElementSibling;
+
+        if (errorMessage) {
+            errorMessage.style.display = 'inline-block';
+        }
+    }
+}
+
 
 /* ================= LOAD TEST RECORDS ================= */
 
@@ -1491,6 +1546,35 @@ function exportSurveillanceCSV() {
     URL.revokeObjectURL(url);
 }
 
+/* ================= PROTECTED CSV DOWNLOAD ================= */
+
+async function downloadProtectedCSV() {
+    try {
+        const response = await apiFetch('/api/violations/export/csv');
+
+        if (!response.ok) {
+            throw new Error('Unable to download CSV report.');
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'GreenEye_Violations_Report.csv';
+
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+
+        URL.revokeObjectURL(url);
+
+    } catch (error) {
+        console.error('CSV download error:', error);
+        alert('CSV download failed: ' + error.message);
+    }
+}
+
 function clearSurveillanceFilters() {
     document.getElementById('surveillanceSearch').value = '';
     document.getElementById('surveillanceStatus').value = '';
@@ -1517,7 +1601,7 @@ async function deleteTestRecord(id) {
     if (!confirmed) return;
 
     try {
-        const response = await fetch(
+        const response = await apiFetch(
             `/api/violations/test-records/${encodeURIComponent(id)}`,
             {
                 method: 'DELETE'
@@ -1544,14 +1628,46 @@ async function deleteTestRecord(id) {
 
 /* ================= EVIDENCE IMAGE PREVIEW ================= */
 
-function openEvidencePreview(imageUrl) {
+let evidencePreviewObjectUrl = null;
+
+async function openEvidencePreview(imageUrl) {
     const modal = document.getElementById('evidenceModal');
     const image = document.getElementById('evidencePreviewImage');
 
     if (!modal || !image || !imageUrl) return;
 
-    image.src = imageUrl;
-    modal.style.display = 'flex';
+    try {
+        const parsedUrl = new URL(imageUrl, window.location.origin);
+
+        if (parsedUrl.origin === window.location.origin) {
+            const response = await apiFetch(parsedUrl.href);
+
+            if (!response.ok) {
+                throw new Error('Unable to load evidence image.');
+            }
+
+            const blob = await response.blob();
+
+            if (evidencePreviewObjectUrl) {
+                URL.revokeObjectURL(evidencePreviewObjectUrl);
+            }
+
+            evidencePreviewObjectUrl = URL.createObjectURL(blob);
+            image.src = evidencePreviewObjectUrl;
+
+        } else if (parsedUrl.hostname === 'res.cloudinary.com') {
+            image.src = parsedUrl.href;
+
+        } else {
+            throw new Error('Unsupported evidence image URL.');
+        }
+
+        modal.style.display = 'flex';
+
+    } catch (error) {
+        console.error('Evidence preview error:', error);
+        alert('Unable to load evidence image: ' + error.message);
+    }
 }
 
 function closeEvidencePreview() {
@@ -1560,11 +1676,16 @@ function closeEvidencePreview() {
 
     modal.style.display = 'none';
     image.src = '';
+
+    if (evidencePreviewObjectUrl) {
+        URL.revokeObjectURL(evidencePreviewObjectUrl);
+        evidencePreviewObjectUrl = null;
+    }
 }
 
 async function markFinePaid(id) {
   try {
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/violations/${id}/payment`,
       {
         method: 'PATCH',
@@ -1600,7 +1721,7 @@ async function markFinePaid(id) {
 
 async function markViolationReviewed(id) {
   try {
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/violations/${id}/status`,
       {
         method: 'PATCH',
@@ -1773,7 +1894,7 @@ document
                 'form-message';
 
 
-            const response = await fetch(
+            const response = await apiFetch(
                 '/api/students',
                 {
                     method: 'POST',
@@ -1965,7 +2086,7 @@ async function detectLitterFromCamera(
 
 
         const response =
-            await fetch(
+            await apiFetch(
                 '/api/violations/analyze',
                 {
                     method: 'POST',
@@ -2156,7 +2277,7 @@ async function checkLiveCameraForNewLitter() {
     'live-check.jpg'
   );
 
-  const response = await fetch(
+  const response = await apiFetch(
     '/api/violations/check-litter',
     {
       method: 'POST',
@@ -2356,7 +2477,7 @@ async function editStudent(studentId) {
             return;
         }
 
-        const response = await fetch(
+        const response = await apiFetch(
             `/api/students/${encodeURIComponent(studentId)}`,
             {
                 method: 'PUT',
@@ -2409,7 +2530,7 @@ async function deleteStudent(studentId) {
 
     try {
 
-        const response = await fetch(
+        const response = await apiFetch(
             `/api/students/${encodeURIComponent(studentId)}`,
             {
                 method: 'DELETE'
@@ -2522,7 +2643,17 @@ themeToggle.addEventListener(
     }
 );
 
+/* ================= ADMIN LOGOUT ================= */
 
+const logoutBtn = document.getElementById('logoutBtn');
+
+if (logoutBtn) {
+    logoutBtn.addEventListener('click', () => {
+        localStorage.removeItem('greeneyeToken');
+
+        window.location.replace('/login.html');
+    });
+}
 
 /* ================= SAFE AI LITTER TEST ================= */
 
@@ -2545,7 +2676,7 @@ async function runSafeLitterTest() {
     message.className = 'form-message';
 
     try {
-        const response = await fetch(
+        const response = await apiFetch(
             '/api/violations/analyze-test-save',
             {
                 method: 'POST',

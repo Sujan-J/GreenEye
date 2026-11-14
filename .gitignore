@@ -1,7 +1,6 @@
 # Node
 node_modules/
 npm-debug.log*
-package-lock.json
 
 # Environment / secrets
 .env
@@ -26,6 +25,14 @@ ai-service/videos/
 ai-service/evidence/
 ai-service/runs/
 ai-service/datasets/
+
+# Model weights
+*.pt
+*.onnx
+*.weights
+
+# Logs
+*.log
 
 # IDE
 .vscode/

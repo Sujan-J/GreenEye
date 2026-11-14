@@ -63,6 +63,12 @@
             </button>
         </div>
 
+        <div class="theme-switcher">
+            <button id="logoutBtn" type="button">
+                🚪 Logout
+            </button>
+        </div>
+
         <div class="sidebar-bottom">
             <div class="system-status">
                 <span class="status-dot"></span>
@@ -169,20 +175,22 @@
         <section class="panel" id="violations">
 
             <div class="panel-head">
-                <a
-                href="/api/violations/export/csv"
-                style="
-                    display: inline-block;
-                    margin-left: 8px;
-                    padding: 8px 12px;
-                    border-radius: 6px;
-                    background: #146c43;
-                    color: white;
-                    text-decoration: none;
-                "
+                <button
+                    type="button"
+                    onclick="downloadProtectedCSV()"
+                    style="
+                        display: inline-block;
+                        margin-left: 8px;
+                        padding: 8px 12px;
+                        border-radius: 6px;
+                        background: #146c43;
+                        color: white;
+                        border: none;
+                        cursor: pointer;
+                    "
                 >
-                ⬇ Download CSV Report
-                </a>
+                    ⬇ Download CSV Report
+                </button>
 
                 <div>
                     <h2>Recent Violations</h2>
@@ -563,13 +571,13 @@
                     <p>Live violation and fine summary</p>
                 </div>
 
-                <a
-                    href="/api/violations/export/csv"
+                <button
+                    type="button"
                     class="secondary-btn"
-                    style="text-decoration: none;"
+                    onclick="downloadProtectedCSV()"
                 >
                     ⬇ Download CSV Report
-                </a>
+                </button>
             </div>
 
             <div class="cards">

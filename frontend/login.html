@@ -1,0 +1,155 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GreenEye | Admin Login</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #101827;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 400px;
+      padding: 35px;
+      background: #1c293b;
+      border: 1px solid #34445a;
+      border-radius: 16px;
+    }
+
+    h1 {
+      color: #45d483;
+      margin-bottom: 10px;
+    }
+
+    p {
+      color: #aab7c8;
+      margin-bottom: 25px;
+    }
+
+    label {
+      display: block;
+      margin: 15px 0 8px;
+    }
+
+    input {
+      width: 100%;
+      padding: 13px;
+      border-radius: 8px;
+      border: 1px solid #46566b;
+      background: #101827;
+      color: white;
+      outline: none;
+    }
+
+    button {
+      width: 100%;
+      margin-top: 22px;
+      padding: 13px;
+      border: none;
+      border-radius: 8px;
+      background: #45d483;
+      color: #102018;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    #message {
+      margin-top: 15px;
+      color: #ff7777;
+      font-size: 14px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="login-card">
+    <h1>GreenEye</h1>
+    <p>Administrator Login</p>
+
+    <form id="loginForm">
+      <label for="email">Admin Email</label>
+      <input
+        type="email"
+        id="email"
+        required
+        autocomplete="username"
+      >
+
+      <label for="password">Password</label>
+      <input
+        type="password"
+        id="password"
+        required
+        autocomplete="current-password"
+      >
+
+      <button type="submit" id="loginButton">Login</button>
+      <div id="message" role="alert"></div>
+    </form>
+  </div>
+
+  <script>
+    if (localStorage.getItem('greeneyeToken')) {
+      window.location.replace('/');
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      const button = document.getElementById('loginButton');
+      const message = document.getElementById('message');
+
+      button.disabled = true;
+      message.textContent = 'Logging in...';
+
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            email: document.getElementById('email').value,
+            password: document.getElementById('password').value
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Login failed.');
+        }
+
+        localStorage.setItem('greeneyeToken', data.token);
+        window.location.replace('/');
+
+      } catch (error) {
+        message.textContent = error.message;
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

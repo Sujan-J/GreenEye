@@ -19,12 +19,18 @@ const PORT = process.env.PORT || 5000;
 const { default: connectDB } = await import('./config/db.js');
 const { default: studentRoutes } = await import('./routes/students.js');
 const { default: violationRoutes } = await import('./routes/violations.js');
+const { default: authRoutes } = await import('./routes/auth.js');
+const { default: authMiddleware } = await import('./middleware/auth.js');
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(morgan('dev'));
 
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use(
+    '/uploads',
+    authMiddleware,
+    express.static(path.join(__dirname, '../uploads'))
+);
 
 app.get('/api/health', (req, res) => {
   res.json({
@@ -34,8 +40,12 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-app.use('/api/students', studentRoutes);
-app.use('/api/violations', violationRoutes);
+// Public login route
+app.use('/api/auth', authRoutes);
+
+// Protected API routes
+app.use('/api/students', authMiddleware, studentRoutes);
+app.use('/api/violations', authMiddleware, violationRoutes);
 
 app.use(express.static(path.join(__dirname, '../frontend')));
 
