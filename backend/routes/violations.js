@@ -114,13 +114,11 @@ router.post('/', async (req,res) => {
 
 router.get('/test-records', async (req, res) => {
   try {
-    if (
-      process.env.NODE_ENV === 'production' ||
-      process.env.ENABLE_GREENEYE_TEST_MODE !== 'true'
-    ) {
-      return res.status(403).json({
-        message: 'Test mode is disabled.'
-      });
+    if (process.env.ENABLE_GREENEYE_TEST_MODE !== 'true') {
+        return res.status(403).json({
+            success: false,
+            message: 'Safe test mode is disabled.'
+        });
     }
 
     const records = await Violation.find({
@@ -136,13 +134,12 @@ router.get('/test-records', async (req, res) => {
 // DELETE ONLY GREENEYE TEST RECORDS
 router.delete('/test-records/:id', async (req, res) => {
     try {
-        if (
-            process.env.NODE_ENV === 'production' ||
-            process.env.ENABLE_GREENEYE_TEST_MODE !== 'true'
-        ) {
-            return res.status(403).json({
-                message: 'Test mode is disabled.'
-            });
+        if (process.env.ENABLE_GREENEYE_TEST_MODE !== 'true')
+       {
+          return res.status(403).json({
+              success: false,
+              message: 'Test mode is disabled.'
+          });
         }
 
         if (!/^[a-fA-F0-9]{24}$/.test(req.params.id)) {
@@ -275,16 +272,13 @@ router.post('/analyze-test', upload.single('file'), async (req, res) => {
 router.post('/analyze-test-save', upload.single('file'), async (req, res) => {
   let cloudinaryPublicId = null;
 
-  try {
+  try {    
     // Require explicit test-mode permission
-    if (
-      process.env.NODE_ENV === 'production' ||
-      process.env.ENABLE_GREENEYE_TEST_MODE !== 'true'
-    ) {
-      return res.status(403).json({
-        success: false,
-        message: 'Safe test mode is disabled.'
-      });
+    if (process.env.ENABLE_GREENEYE_TEST_MODE !== 'true') {
+        return res.status(403).json({
+            success: false,
+            message: 'Safe test mode is disabled.'
+        });
     }
 
     if (!req.file) {
